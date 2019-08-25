@@ -18,18 +18,18 @@ script:
   # if the project uses ctest we can run the tests like this
   # - make tests
   - if [[ "${TRAVIS_OS_NAME}" == "linux" ]]; then
-    make gcov
-    make lcov
-    bash <(curl -s https://codecov.io/bash) -X gcov || echo "Codecov did not collect coverage reports"
-  fi
+      make gcov
+      make lcov
+      bash <(curl -s https://codecov.io/bash) -X gcov || echo "Codecov failed"
+    fi
 
 addons:
   apt:
     sources:
-    - ubuntu-toolchain-r-test
+      - ubuntu-toolchain-r-test
     packages:
-    - gcc-9
-    - g++-9
+      - gcc-9
+      - g++-9
 
 install:
-- if [ "$CXX" = "g++" ]; then export CXX="g++-9" CC="gcc-9"; fi
+  - if [ "$CXX" = "g++" ]; then export CXX="g++-9" CC="gcc-9"; fi

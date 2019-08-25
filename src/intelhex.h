@@ -23,6 +23,7 @@ public:
     Result save(const std::filesystem::__cxx11::path &path) const;
     uint8_t get(uint32_t address) const;
     uint8_t &operator[](uint32_t address);
+    void erase(uint32_t address, uint32_t length);
     uint32_t maxAddress() const;
     uint32_t minAddress() const;
     Result state() const;

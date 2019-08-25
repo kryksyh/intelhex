@@ -17,6 +17,11 @@ script:
   - make
   # if the project uses ctest we can run the tests like this
   # - make tests
+  if [[ "${TRAVIS_OS_NAME}" == "linux" ]]; then
+      make gcov
+      make lcov
+      bash <(curl -s https://codecov.io/bash) -X gcov || echo "Codecov did not collect coverage reports"
+  fi
   
 addons:
   apt:
@@ -28,5 +33,6 @@ addons:
 
 install:
 - if [ "$CXX" = "g++" ]; then export CXX="g++-9" CC="gcc-9"; fi
+
 
       

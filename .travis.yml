@@ -21,9 +21,11 @@ script:
 addons:
   apt:
     sources:
-      - ubuntu-toolchain-r-test
+    - ubuntu-toolchain-r-test
     packages:
-      - g++-9
+    - g++-9
 
+install:
+- if [ "$CXX" = "g++" ]; then export CXX="g++-9" CC="gcc-9"; fi
 
       

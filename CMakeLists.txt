@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.15)
+cmake_minimum_required(VERSION 3.12)
 
 project(libintelhex VERSION 1.0
                     DESCRIPTION "Intel hex C++ parsing library"
@@ -22,3 +22,11 @@ set(TESTS_SOURCE ${TESTS_SOURCE_DIR}/main.cpp
 add_executable(tests ${TESTS_SOURCE})
 
 target_link_libraries(tests Catch2::Catch intelhex)
+
+if (ENABLE_COVERAGE)
+    list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/CMake")
+    find_package(codecov)
+    add_coverage(tests)
+    list(APPEND LCOV_REMOVE_PATTERNS "/usr/")
+    coverage_evaluate()
+endif()

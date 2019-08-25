@@ -18,7 +18,8 @@ script:
   # if the project uses ctest we can run the tests like this
   # - make tests
   - make gcov
-  - make lcov
+  # lcov is not supporting gcc9 gnco atm
+  # - make lcov
   - bash <(curl -s https://codecov.io/bash) -X gcov || echo "Codecov failed"
 
 addons:

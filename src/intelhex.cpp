@@ -78,6 +78,15 @@ public:
         , m_data(nullptr)
     {
     }
+    Block(Block &other)
+        : m_base_address(other.m_base_address)
+        , m_extended_address(other.m_extended_address)
+        , m_length(other.m_length)
+    {
+        m_data = (uint8_t *) malloc(other.m_allocated_length);
+        memcpy(m_data, other.m_data, m_length);
+        m_allocated_length = other.m_allocated_length;
+    }
     ~Block() { free(m_data); }
     void add_bytes(uint8_t *data, uint16_t length)
     {
@@ -96,6 +105,20 @@ public:
     uint32_t length() const { return m_length; }
 
     uint8_t *data() const { return m_data; }
+
+    void erase(uint32_t eaddress, uint32_t elength)
+    {
+        if (address() == eaddress) {
+            uint32_t newLength = m_length - elength;
+            uint8_t *data      = (uint8_t *) malloc(newLength);
+            memcpy(data, &m_data[m_length - elength], newLength);
+            free(m_data);
+            m_data = data;
+        }
+        else {
+            m_length = eaddress - address();
+        }
+    }
 
 private:
     uint16_t m_base_address;
@@ -352,6 +375,43 @@ uint8_t &IntelHex::operator[](uint32_t address)
     m_blocks.push_back(newBlock);
     newBlock->add_bytes(&tmp, 1);
     return newBlock->data()[address - newBlock->address()];
+}
+
+bool inrange(uint32_t value, uint32_t from, uint32_t length)
+{
+    uint32_t to = from + length;
+    return value >= from && value <= to;
+}
+
+void IntelHex::erase(uint32_t address, uint32_t length)
+{
+    for (auto block : m_blocks) {
+        // if the beggining of the block is in the erase region
+        if (inrange(block->address(), address, length)) {
+            // if the ending of the block is in the erase region too
+            // then whole block need to be erased
+            if (inrange(block->address() + block->length(), address, length)) {
+                // delete block and erase vector el
+            }
+            // otherwise only head need to be trimmed
+            else {
+                // adjusting address, since Block::erase expects
+                // it to be in the block's boundaries
+                block->erase(block->address(), (address + length) - block->address());
+            }
+        }
+        // if the ending of the block in the erase region
+        else if (inrange(block->address() + block->length(), address, length)) {
+            block->erase(address, (block->address() + (block->length()) - address + length));
+        }
+        // if the erase region is inside the block
+        // we need to split block in two smaller blocks
+        else if (inrange(address, block->address(), block->length())) {
+            Block *newBlock = new Block();
+            // newBlock->add_bytes(block->data(), );
+            block->erase(address, block->length() - (address - block->address()));
+        }
+    }
 }
 
 uint32_t IntelHex::maxAddress() const

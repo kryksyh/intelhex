@@ -1,0 +1,35 @@
+language: cpp
+dist: xenial
+compiler:
+  - gcc
+
+before_script:
+  # create a build folder for the out-of-source build
+  - mkdir build
+  # switch to build directory
+  - cd build
+  # run cmake; here we assume that the project's
+  # top-level CMakeLists.txt is located at '..'
+  - cmake .. -DENABLE_COVERAGE=False
+
+script:
+  # once CMake has done its job we just build using make as usual
+  - make
+  # if the project uses ctest we can run the tests like this
+  # - make tests
+  # - make gcov
+  # lcov is not supporting gcc9 gnco atm
+  # - make lcov
+  - bash <(curl -s https://codecov.io/bash) -X gcov || echo "Codecov failed"
+
+addons:
+  apt:
+    sources:
+      - ubuntu-toolchain-r-test
+    packages:
+      - gcc-9
+      - g++-9
+      - lcov
+
+install:
+  - if [ "$CXX" = "g++" ]; then export CXX="g++-9" CC="gcc-9"; fi

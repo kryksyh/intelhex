@@ -1,11 +1,12 @@
 #include "intelhex.h"
+#include <array>
 #include <fstream>
 #include <iostream>
+#include <sstream>
 #include <string.h>
-#include <string_view>
 #include <vector>
 
-namespace fs = std::filesystem;
+using namespace IntelHexNS;
 
 enum class RecordType
 {
@@ -16,6 +17,8 @@ enum class RecordType
     ExtendedLinearAddress  = 4,
     StartLinearAddress     = 5
 };
+
+static const char IHEX_EOF[] = ":00000001FF\n";
 
 uint8_t from_hex(char c)
 {
@@ -32,17 +35,17 @@ uint8_t from_hex(char c)
 template<typename T>
 static T from_hex(const char *str)
 {
-    if constexpr (std::is_same_v<uint8_t, T>) {
+    if (std::is_same_v<uint8_t, T>) {
         return (from_hex(str[0]) << 4) + from_hex(str[1]);
     }
-    else if constexpr (std::is_same_v<uint16_t, T>) {
+    else if (std::is_same_v<uint16_t, T>) {
         T res(0);
         res = from_hex<uint8_t>(str) << 8;
         str += 2;
         res |= from_hex<uint8_t>(str);
         return res;
     }
-    else if constexpr (std::is_same_v<uint32_t, T>) {
+    else if (std::is_same_v<uint32_t, T>) {
         T res(0);
         res = from_hex<uint16_t>(str) << 16;
         str += 2;
@@ -59,7 +62,7 @@ void to_hex(uint8_t byte, char *out)
     out[1]     = hex[byte & 0x0F];
 }
 
-bool isChecksumCorrect(std::string_view view)
+bool isChecksumCorrect(string_view view)
 {
     uint8_t cs = 0;
     for (const char *ptr = view.data() + 1; ptr < view.data() + view.size() - 1; ptr += 2) {
@@ -68,7 +71,7 @@ bool isChecksumCorrect(std::string_view view)
     return cs == 0;
 }
 
-struct Block {
+struct IntelHexNS::Block {
 public:
     Block()
         : m_base_address(0)
@@ -162,7 +165,7 @@ Result IntelHex::parse(std::istream &input)
             break;
         }
 
-        std::string_view view(line);
+        string_view view(line);
         const char *data = view.data() + 1;
 
         length = from_hex<uint8_t>(data);
@@ -190,8 +193,10 @@ Result IntelHex::parse(std::istream &input)
             if (currentBlock->address() + currentBlock->length() !=
                     (extended_address << 16) + address ||
                 (currentBlock->address() >> 16) != extended_address) {
-                m_blocks.push_back(currentBlock);
-                currentBlock = new Block();
+                if (currentBlock->length() > 0) {
+                    m_blocks.push_back(currentBlock);
+                    currentBlock = new Block();
+                }
                 currentBlock->set_extended_address(extended_address);
                 currentBlock->set_base_address(address);
             }
@@ -255,7 +260,7 @@ Result IntelHex::save()
 uint8_t checksum(uint32_t size, std::array<uint8_t, 256> buf)
 {
     uint8_t cs = 0;
-    for (int i = 0; i < size; i++) {
+    for (uint32_t i = 0; i < size; i++) {
         cs += buf[i];
     }
     cs = (~cs) + 1;
@@ -277,7 +282,6 @@ Result IntelHex::save(const fs::path &path) const
     uint8_t line_length = 0;
     for (auto block : m_blocks) {
         uint16_t new_extended_address = block->address() >> 16;
-        uint16_t base_address         = block->address();
 
         if (extended_address != new_extended_address) {
             extended_address = new_extended_address;
@@ -342,6 +346,7 @@ Result IntelHex::save(const fs::path &path) const
         }
         m_state = Result::SUCCESS;
     }
+    outfile.write(IHEX_EOF, sizeof(IHEX_EOF));
     outfile.close();
     return m_state;
 }
@@ -353,7 +358,7 @@ uint8_t IntelHex::get(uint32_t address) const
             return block->data()[address - block->address()];
         }
     }
-    return 0;
+    return m_fillChar;
 }
 
 uint8_t &IntelHex::operator[](uint32_t address)
@@ -363,17 +368,16 @@ uint8_t &IntelHex::operator[](uint32_t address)
             return block->data()[address - block->address()];
         }
         else if (block->address() + block->length() == address) {
-            uint8_t tmp = 0x00;
-            block->add_bytes(&tmp, 1);
+            block->add_bytes(&m_fillChar, 1);
             return block->data()[address - block->address()];
         }
     }
-    uint8_t tmp     = 0x00;
+
     Block *newBlock = new Block();
     newBlock->set_extended_address(address >> 16);
     newBlock->set_base_address(address & 0xFFFF);
     m_blocks.push_back(newBlock);
-    newBlock->add_bytes(&tmp, 1);
+    newBlock->add_bytes(&m_fillChar, 1);
     return newBlock->data()[address - newBlock->address()];
 }
 
@@ -429,9 +433,37 @@ uint32_t IntelHex::minAddress() const
 {
     uint32_t min = 0xFFFFFFFF;
     for (auto block : m_blocks) {
-        uint32_t lmin = block->address() + block->length() - 1;
-        if (min < lmin)
+        uint32_t lmin = block->address();
+        if (min > lmin)
             min = lmin;
     }
     return min;
+}
+
+uint32_t IntelHex::size() const
+{
+    uint32_t min = minAddress();
+    uint32_t max = maxAddress();
+    if (max > min) {
+        return max - min;
+    }
+    else {
+        return 0;
+    }
+}
+
+void IntelHex::fill(uint8_t fillChar)
+{
+    m_fillChar = fillChar;
+}
+
+bool IntelHex::isSet(uint32_t address, uint8_t &val)
+{
+    for (auto block : m_blocks) {
+        if (block->address() <= address && block->address() + block->length() > address) {
+            val = block->data()[address - block->address()];
+            return true;
+        }
+    }
+    return false;
 }

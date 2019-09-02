@@ -1,7 +1,7 @@
-#include <filesystem>
 #include "catch.hpp"
 #include "intelhex.h"
-namespace fs = std::filesystem;
+
+using namespace IntelHexNS;
 
 TEST_CASE("Can load file", "Loading")
 {

@@ -105,7 +105,7 @@ public:
         , m_data(nullptr)
     {
     }
-    Block(Block &other)
+    Block(const Block &other)
         : m_base_address(other.m_base_address)
         , m_extended_address(other.m_extended_address)
         , m_length(other.m_length)
@@ -156,9 +156,41 @@ private:
 };
 
 IntelHex::IntelHex()
+    : m_state(Result::INCORRECT_FILE)
+    , m_fillChar(0xff)
+    , filename("")
 {
-    m_state = Result::INCORRECT_FILE;
     m_blocks.clear();
+}
+
+IntelHex::IntelHex(fs::path path)
+    : m_state(Result::INCORRECT_FILE)
+    , m_fillChar(0xff)
+    , filename(path)
+{
+    m_blocks.clear();
+    m_state = load(path);
+}
+
+IntelHex::IntelHex(const IntelHex &hex)
+    : filename(hex.filename)
+    , m_fillChar(hex.m_fillChar)
+    , m_state(hex.m_state)
+{
+    // deep copying all blocks
+    for (const auto block : hex.m_blocks) {
+        m_blocks.push_back(new Block(*block));
+    }
+}
+
+IntelHex::IntelHex(IntelHex &&hex)
+    : filename(hex.filename)
+    , m_fillChar(hex.m_fillChar)
+    , m_state(hex.m_state)
+    , m_blocks(hex.m_blocks)
+{
+    // blocks are no longer owned by hex
+    hex.m_blocks.clear();
 }
 
 IntelHex::~IntelHex()
@@ -166,6 +198,29 @@ IntelHex::~IntelHex()
     for (auto block : m_blocks) {
         delete block;
     }
+}
+
+IntelHex &IntelHex::operator=(const IntelHex &hex)
+{
+    return *this;
+}
+
+IntelHex &IntelHex::operator=(IntelHex &&hex)
+{
+    // clearing previously accured blocks
+    for (auto block : m_blocks) {
+        delete block;
+    }
+
+    filename   = hex.filename;
+    m_fillChar = hex.m_fillChar;
+    m_state    = hex.m_state;
+    m_blocks   = hex.m_blocks;
+
+    // blocks are no longer owned by hex
+    hex.m_blocks.clear();
+
+    return *this;
 }
 
 Result IntelHex::parse(std::istream &input)
@@ -370,7 +425,8 @@ Result IntelHex::save(const fs::path &path) const
         }
         m_state = Result::SUCCESS;
     }
-    outfile.write(IHEX_EOF, sizeof(IHEX_EOF));
+    // Writing IntelHex end of file marker. -1 for terminating 0
+    outfile.write(IHEX_EOF, sizeof(IHEX_EOF) - 1);
     outfile.close();
     return m_state;
 }
@@ -481,7 +537,7 @@ void IntelHex::fill(uint8_t fillChar)
     m_fillChar = fillChar;
 }
 
-bool IntelHex::isSet(uint32_t address, uint8_t &val)
+bool IntelHex::isSet(uint32_t address, uint8_t &val) const
 {
     for (auto block : m_blocks) {
         if (block->address() <= address && block->address() + block->length() > address) {

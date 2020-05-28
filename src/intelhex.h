@@ -22,6 +22,8 @@
  *  SOFTWARE.
  */
 
+#ifndef __INTELHEX_H
+
 #include <vector>
 #include "std_compat.h"
 
@@ -42,7 +44,12 @@ class IntelHex {
 public:
     IntelHex();
     IntelHex(fs::path path);
+    IntelHex(const IntelHex &hex);
+    IntelHex(IntelHex &&hex);
     ~IntelHex();
+    IntelHex &operator=(const IntelHex &hex);
+    IntelHex &operator=(IntelHex &&hex);
+
     Result load(fs::path path);
     Result loads(const std::string &hex);
     Result save();
@@ -55,7 +62,7 @@ public:
     uint32_t size() const;
     Result state() const;
     void fill(uint8_t fillChar);
-    bool isSet(uint32_t address, uint8_t &val);
+    bool isSet(uint32_t address, uint8_t &val) const;
 
 private:
     std::vector<Block *> m_blocks;
@@ -66,3 +73,6 @@ private:
 };
 
 } // namespace IntelHexNS
+
+#define __INTELHEX_H
+#endif

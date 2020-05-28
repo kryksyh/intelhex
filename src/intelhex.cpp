@@ -23,6 +23,7 @@
  */
 
 #include "intelhex.h"
+#include <algorithm>
 #include <array>
 #include <fstream>
 #include <iostream>
@@ -103,12 +104,14 @@ public:
         , m_length(0)
         , m_allocated_length(0)
         , m_data(nullptr)
+        , m_valid(true)
     {
     }
     Block(const Block &other)
         : m_base_address(other.m_base_address)
         , m_extended_address(other.m_extended_address)
         , m_length(other.m_length)
+        , m_valid(true)
     {
         m_data = (uint8_t *) malloc(other.m_allocated_length);
         memcpy(m_data, other.m_data, m_length);
@@ -133,14 +136,22 @@ public:
 
     uint8_t *data() const { return m_data; }
 
+    void set_valid_flag(bool val) { m_valid = val; }
+    bool is_valid() { return m_valid; }
+
     void erase(uint32_t eaddress, uint32_t elength)
     {
         if (address() == eaddress) {
-            uint32_t newLength = m_length - elength;
-            uint8_t *data      = (uint8_t *) malloc(newLength);
-            memcpy(data, &m_data[m_length - elength], newLength);
+            uint32_t newLength  = m_length - elength;
+            uint32_t newAddress = eaddress + elength;
+            uint8_t *data       = (uint8_t *) malloc(newLength);
+            memcpy(data, &m_data[m_length - newLength], newLength);
             free(m_data);
-            m_data = data;
+            m_data   = data;
+            m_length = newLength;
+
+            set_base_address(newAddress & 0xFFFF);
+            set_extended_address(newAddress >> 16);
         }
         else {
             m_length = eaddress - address();
@@ -152,6 +163,7 @@ private:
     uint16_t m_extended_address;
     uint32_t m_length;
     uint8_t *m_data;
+    bool m_valid;
     unsigned int m_allocated_length;
 };
 
@@ -473,15 +485,16 @@ void IntelHex::erase(uint32_t address, uint32_t length)
         // if the beggining of the block is in the erase region
         if (inrange(block->address(), address, length)) {
             // if the ending of the block is in the erase region too
-            // then whole block need to be erased
+            // then whole block needs to be erased
             if (inrange(block->address() + block->length(), address, length)) {
-                // delete block and erase vector el
+                // mark to delete later
+                block->set_valid_flag(false);
             }
-            // otherwise only head need to be trimmed
+            // otherwise only head needs to be trimmed
             else {
                 // adjusting address, since Block::erase expects
                 // it to be in the block's boundaries
-                block->erase(block->address(), (address + length) - block->address());
+                block->erase(block->address(), (address - block->address()) + length);
             }
         }
         // if the ending of the block in the erase region
@@ -489,13 +502,37 @@ void IntelHex::erase(uint32_t address, uint32_t length)
             block->erase(address, (block->address() + (block->length()) - address + length));
         }
         // if the erase region is inside the block
-        // we need to split block in two smaller blocks
+        // we need to split block into two smaller blocks
         else if (inrange(address, block->address(), block->length())) {
             Block *newBlock = new Block();
-            // newBlock->add_bytes(block->data(), );
+
+            uint32_t newBlockAddress = address + length;
+
+            newBlock->set_base_address(newBlockAddress & 0xFFFF);
+            newBlock->set_extended_address(newBlockAddress >> 16);
+            newBlock->add_bytes(block->data() + (newBlockAddress - block->address()),
+                                block->length() - (newBlockAddress - block->address()));
             block->erase(address, block->length() - (address - block->address()));
+            auto position = std::find(m_blocks.begin(), m_blocks.end(), block);
+            // adding new block just after current one
+            // TODO: skip re-iteration over new block
+            if (position != m_blocks.end())
+                position++;
+            m_blocks.insert(position, newBlock);
         }
     }
+    // clean up blocks market for deletion
+    // TODO: re-write this part
+    m_blocks.erase(std::remove_if(m_blocks.begin(),
+                                  m_blocks.end(),
+                                  [](const auto block) {
+                                      if (!block->is_valid()) {
+                                          delete block;
+                                          return true;
+                                      }
+                                      return false;
+                                  }),
+                   m_blocks.end());
 }
 
 uint32_t IntelHex::maxAddress() const
@@ -539,6 +576,7 @@ void IntelHex::fill(uint8_t fillChar)
 
 bool IntelHex::isSet(uint32_t address, uint8_t &val) const
 {
+    val = m_fillChar;
     for (auto block : m_blocks) {
         if (block->address() <= address && block->address() + block->length() > address) {
             val = block->data()[address - block->address()];

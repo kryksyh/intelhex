@@ -450,8 +450,17 @@ Result IntelHex::save(const fs::path &path) const
 
 uint8_t IntelHex::get(uint32_t address) const
 {
+    // caching last accessed block as it is most likely will be used again
+    static Block *cached = nullptr;
+    if (cached) {
+        if (cached->address() <= address && cached->address() + cached->length() > address) {
+            return cached->data()[address - cached->address()];
+        }
+    }
+
     for (auto block : m_blocks) {
         if (block->address() <= address && block->address() + block->length() > address) {
+            cached = block;
             return block->data()[address - block->address()];
         }
     }
@@ -460,11 +469,26 @@ uint8_t IntelHex::get(uint32_t address) const
 
 uint8_t &IntelHex::operator[](uint32_t address)
 {
+    // caching last accessed block as it is most likely will be used again
+    static Block *cached = nullptr;
+
+    if (cached) {
+        if (cached->address() <= address && cached->address() + cached->length() > address) {
+            return cached->data()[address - cached->address()];
+        }
+        else if (cached->address() + cached->length() == address) {
+            cached->add_bytes(&m_fillChar, 1);
+            return cached->data()[address - cached->address()];
+        }
+    }
+
     for (auto block : m_blocks) {
         if (block->address() <= address && block->address() + block->length() > address) {
+            cached = block;
             return block->data()[address - block->address()];
         }
         else if (block->address() + block->length() == address) {
+            cached = block;
             block->add_bytes(&m_fillChar, 1);
             return block->data()[address - block->address()];
         }
@@ -475,6 +499,7 @@ uint8_t &IntelHex::operator[](uint32_t address)
     newBlock->set_base_address(address & 0xFFFF);
     m_blocks.push_back(newBlock);
     newBlock->add_bytes(&m_fillChar, 1);
+    cached = newBlock;
     return newBlock->data()[address - newBlock->address()];
 }
 

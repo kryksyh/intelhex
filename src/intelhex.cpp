@@ -319,6 +319,11 @@ Result IntelHex::parse(std::istream &input)
     return m_state;
 }
 
+void IntelHex::setLineWidth(const uint8_t &lineWidth)
+{
+    m_lineWidth = lineWidth;
+}
+
 Result IntelHex::load(fs::path path)
 {
     std::ifstream infile(path);
@@ -398,7 +403,7 @@ Result IntelHex::save(const fs::path &path) const
         uint32_t write_pos = 0;
         while (block->length() > write_pos) {
             // Default line size
-            uint8_t write_size = 0x20;
+            uint8_t write_size = m_lineWidth;
 
             // If current block is running out, writing what's left
             if (block->length() - write_pos < write_size)

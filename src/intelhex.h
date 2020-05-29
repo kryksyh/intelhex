@@ -63,13 +63,15 @@ public:
     Result state() const;
     void fill(uint8_t fillChar);
     bool isSet(uint32_t address, uint8_t &val) const;
+    void setLineWidth(const uint8_t &lineWidth);
 
 private:
     std::vector<Block *> m_blocks;
     mutable Result m_state;
     fs::path filename;
     Result parse(std::istream &input);
-    uint8_t m_fillChar;
+    uint8_t m_fillChar  = 0xFF;
+    uint8_t m_lineWidth = 0x10;
 };
 
 } // namespace IntelHexNS

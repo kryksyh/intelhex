@@ -9,6 +9,8 @@ set(CATCH_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/catch)
 add_library(Catch2::Catch IMPORTED INTERFACE)
 target_include_directories(Catch2::Catch INTERFACE ${CATCH_INCLUDE_DIR})
 
+add_compile_definitions(TEST_ENABLE_FILE_OPS)
+
 add_library(intelhex src/intelhex.cpp)
 target_compile_features(intelhex PUBLIC cxx_std_17)
 target_include_directories(intelhex PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)

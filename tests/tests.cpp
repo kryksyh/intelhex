@@ -30,8 +30,10 @@ using namespace IntelHexNS;
 TEST_CASE("Can load file", "Loading")
 {
     auto hex = IntelHex();
-    REQUIRE(hex.load("incorrect path") == Result::FILE_NOT_FOUND);
-    REQUIRE(hex.load("/tmp/Main_project.hex") == Result::SUCCESS);
+    REQUIRE(hex.load("??incorrect path??") == IntelHex::Result::FILE_NOT_FOUND);
+#ifdef TEST_ENABLE_FILE_OPS
+    REQUIRE(hex.load("c:/tmp/Main_project.hex") == IntelHex::Result::SUCCESS);
+#endif
 }
 
 TEST_CASE("Loads", "Loads")
@@ -44,31 +46,35 @@ TEST_CASE("Loads", "Loads")
 :100130003F0156702B5E712B722B732146013421C7
 :00000001FF
 )";
-    REQUIRE(hex.loads(input) == Result::SUCCESS);
+    REQUIRE(hex.loads(input) == IntelHex::Result::SUCCESS);
 }
 
+#ifdef TEST_ENABLE_FILE_OPS
 TEST_CASE("Can save file", "Saving")
 {
     auto hex = IntelHex();
-    REQUIRE(hex.load("/tmp/Main_project.hex") == Result::SUCCESS);
-    // REQUIRE(saveFile("////incorrect path") == Result::NO_SUCH_FILE);
-    REQUIRE(hex.save("/tmp/S2000R-DZ_V1-00_10-10-2018_11-56_out.hex") == Result::SUCCESS);
+    REQUIRE(hex.load("c:/tmp/Main_project.hex") == IntelHex::Result::SUCCESS);
+    REQUIRE(hex.save("c:/tmp/S2000R-DZ_V1-00_10-10-2018_11-56_out.hex") == IntelHex::Result::SUCCESS);
 }
+#endif
 
+#ifdef TEST_ENABLE_FILE_OPS
 TEST_CASE("Reading file", "Reading")
 {
     auto hex = IntelHex();
-    REQUIRE(hex.load("/tmp/Main_project.hex") == Result::SUCCESS);
+    REQUIRE(hex.load("c:/tmp/Main_project.hex") == IntelHex::Result::SUCCESS);
     volatile uint8_t byte;
     for (uint32_t address = 0; address < 0x1FFFF; address++) {
         byte = hex.get(address);
     }
 }
+#endif
 
+#ifdef TEST_ENABLE_FILE_OPS
 TEST_CASE("Modifying file", "Modify")
 {
     auto hex = IntelHex();
-    REQUIRE(hex.load("/tmp/Main_project.hex") == Result::SUCCESS);
+    REQUIRE(hex.load("c:/tmp/Main_project.hex") == IntelHex::Result::SUCCESS);
     for (uint32_t address = 0x9d004000; address < 0x9d00a000; address++) {
         hex[address] = 0xFF;
     }
@@ -76,6 +82,7 @@ TEST_CASE("Modifying file", "Modify")
         REQUIRE(hex[address] == 0xFF);
     }
 }
+#endif
 
 TEST_CASE("Erasing parts", "Erase")
 {
@@ -87,7 +94,7 @@ TEST_CASE("Erasing parts", "Erase")
 :100130003F0156702B5E712B722B732146013421C7
 :00000001FF
 )";
-    REQUIRE(hex.loads(input) == Result::SUCCESS);
+    REQUIRE(hex.loads(input) == IntelHex::Result::SUCCESS);
     REQUIRE(hex.minAddress() == 0x0100);
     REQUIRE(hex.maxAddress() == 0x013f);
     hex.erase(0x120, 0x10);
@@ -114,7 +121,7 @@ TEST_CASE("Cutting of", "Erase")
 :100130003F0156702B5E712B722B732146013421C7
 :00000001FF
 )";
-    REQUIRE(hex.loads(input) == Result::SUCCESS);
+    REQUIRE(hex.loads(input) == IntelHex::Result::SUCCESS);
     hex[0x10]  = 12;
     hex[0x30]  = 32;
     hex[0x666] = 66;

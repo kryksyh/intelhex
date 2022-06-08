@@ -29,19 +29,20 @@
 
 namespace IntelHexNS {
 
-enum class Result
-{
-    UNKNOWN,
-    SUCCESS,
-    FILE_NOT_FOUND,
-    INCORRECT_FILE,
-    UNSUPPORTED_FORMAT,
-};
-
 struct Block;
 
 class IntelHex {
 public:
+
+    enum class Result
+    {
+        UNKNOWN,
+        SUCCESS,
+        FILE_NOT_FOUND,
+        INCORRECT_FILE,
+        UNSUPPORTED_FORMAT,
+    };
+
     IntelHex();
     IntelHex(fs::path path);
     IntelHex(const IntelHex &hex);
@@ -66,10 +67,12 @@ public:
     void setLineWidth(const uint8_t &lineWidth);
 
 private:
-    std::vector<Block *> m_blocks;
-    mutable Result m_state;
-    fs::path filename;
     Result parse(std::istream &input);
+
+    std::vector<Block *> m_blocks;
+    mutable Block *m_cachedBlock = nullptr;
+    mutable Result m_state = Result::INCORRECT_FILE;
+    fs::path filename;
     uint8_t m_fillChar  = 0xFF;
     uint8_t m_lineWidth = 0x10;
 };

@@ -99,11 +99,11 @@ bool isChecksumCorrect(string_view view)
 struct IntelHexNS::Block {
 public:
     Block()
-        : m_base_address(0)
-        , m_extended_address(0)
+        : m_data(nullptr)
         , m_length(0)
         , m_allocated_length(0)
-        , m_data(nullptr)
+        , m_base_address(0)
+        , m_extended_address(0)
         , m_valid(true)
     {
     }
@@ -122,7 +122,10 @@ public:
     {
         if (m_length + length > m_allocated_length) {
             m_allocated_length += length * 2;
-            m_data = (uint8_t *) realloc(m_data, m_allocated_length);
+            uint8_t *reallocated_data = (uint8_t *) realloc(m_data, m_allocated_length);
+            if (reallocated_data == nullptr)
+                return;
+            m_data = reallocated_data;
         }
         memcpy(&m_data[m_length], data, length);
         m_length += length;
@@ -137,7 +140,7 @@ public:
     uint8_t *data() const { return m_data; }
 
     void set_valid_flag(bool val) { m_valid = val; }
-    bool is_valid() { return m_valid; }
+    bool is_valid() const { return m_valid; }
 
     void erase(uint32_t eaddress, uint32_t elength)
     {
@@ -159,26 +162,22 @@ public:
     }
 
 private:
+    uint8_t *m_data;
+    uint32_t m_length;
+    uint32_t m_allocated_length;
     uint16_t m_base_address;
     uint16_t m_extended_address;
-    uint32_t m_length;
-    uint8_t *m_data;
     bool m_valid;
-    unsigned int m_allocated_length;
 };
 
 IntelHex::IntelHex()
-    : m_state(Result::INCORRECT_FILE)
-    , m_fillChar(0xff)
-    , filename("")
+    : filename("")
 {
     m_blocks.clear();
 }
 
 IntelHex::IntelHex(fs::path path)
-    : m_state(Result::INCORRECT_FILE)
-    , m_fillChar(0xff)
-    , filename(path)
+    : filename(path)
 {
     m_blocks.clear();
     m_state = load(path);
@@ -186,8 +185,6 @@ IntelHex::IntelHex(fs::path path)
 
 IntelHex::IntelHex(const IntelHex &hex)
     : filename(hex.filename)
-    , m_fillChar(hex.m_fillChar)
-    , m_state(hex.m_state)
 {
     // deep copying all blocks
     for (const auto block : hex.m_blocks) {
@@ -196,10 +193,10 @@ IntelHex::IntelHex(const IntelHex &hex)
 }
 
 IntelHex::IntelHex(IntelHex &&hex)
-    : filename(hex.filename)
-    , m_fillChar(hex.m_fillChar)
+    : m_blocks(hex.m_blocks)
     , m_state(hex.m_state)
-    , m_blocks(hex.m_blocks)
+    , filename(hex.filename)
+    , m_fillChar(hex.m_fillChar)
 {
     // blocks are no longer owned by hex
     hex.m_blocks.clear();
@@ -214,11 +211,25 @@ IntelHex::~IntelHex()
 
 IntelHex &IntelHex::operator=(const IntelHex &hex)
 {
+    if (this == &hex)
+        return *this;
+    for (auto block : m_blocks) {
+        delete block;
+    }
+    m_blocks.clear();
+    for (const auto block : hex.m_blocks) {
+        m_blocks.push_back(new Block(*block));
+    }
+    filename   = hex.filename;
+    m_fillChar = hex.m_fillChar;
+    m_state    = hex.m_state;
     return *this;
 }
 
 IntelHex &IntelHex::operator=(IntelHex &&hex)
 {
+    if(this == &hex)
+        return *this;
     // clearing previously accured blocks
     for (auto block : m_blocks) {
         delete block;
@@ -235,7 +246,7 @@ IntelHex &IntelHex::operator=(IntelHex &&hex)
     return *this;
 }
 
-Result IntelHex::parse(std::istream &input)
+IntelHex::Result IntelHex::parse(std::istream &input)
 {
     std::string line;
     uint16_t extended_address(0);
@@ -282,7 +293,7 @@ Result IntelHex::parse(std::istream &input)
         switch (type) {
         case RecordType::Data:
             if (currentBlock->address() + currentBlock->length() !=
-                    (extended_address << 16) + address ||
+                    (uint32_t)((extended_address << 16) + address) ||
                 (currentBlock->address() >> 16) != extended_address) {
                 if (currentBlock->length() > 0) {
                     m_blocks.push_back(currentBlock);
@@ -311,6 +322,7 @@ Result IntelHex::parse(std::istream &input)
         case RecordType::ExtendedSegmentAddress:
         case RecordType::StartSegmentAddress:
             m_state = Result::UNSUPPORTED_FORMAT;
+            break;
         default:
             m_state = Result::INCORRECT_FILE;
             break;
@@ -324,7 +336,7 @@ void IntelHex::setLineWidth(const uint8_t &lineWidth)
     m_lineWidth = lineWidth;
 }
 
-Result IntelHex::load(fs::path path)
+IntelHex::Result IntelHex::load(fs::path path)
 {
     std::ifstream infile(path);
     m_state = Result::UNKNOWN;
@@ -340,20 +352,20 @@ Result IntelHex::load(fs::path path)
     return m_state;
 }
 
-Result IntelHex::loads(const std::string &hex)
+IntelHex::Result IntelHex::loads(const std::string &hex)
 {
     m_state = Result::UNKNOWN;
     std::istringstream input(hex);
     return parse(input);
 }
 
-Result IntelHex::save()
+IntelHex::Result IntelHex::save()
 {
     m_state = save(filename);
     return m_state;
 }
 
-uint8_t checksum(uint32_t size, std::array<uint8_t, 256> buf)
+uint8_t checksum(uint32_t size, const std::array<uint8_t, 256> &buf)
 {
     uint8_t cs = 0;
     for (uint32_t i = 0; i < size; i++) {
@@ -363,10 +375,9 @@ uint8_t checksum(uint32_t size, std::array<uint8_t, 256> buf)
     return cs;
 }
 
-Result IntelHex::save(const fs::path &path) const
+IntelHex::Result IntelHex::save(const fs::path &path) const
 {
     std::ofstream outfile(path);
-    std::string line;
     m_state = Result::UNKNOWN;
 
     if (!outfile.is_open())
@@ -451,16 +462,16 @@ Result IntelHex::save(const fs::path &path) const
 uint8_t IntelHex::get(uint32_t address) const
 {
     // caching last accessed block as it is most likely will be used again
-    static Block *cached = nullptr;
-    if (cached) {
-        if (cached->address() <= address && cached->address() + cached->length() > address) {
-            return cached->data()[address - cached->address()];
+    if (m_cachedBlock) {
+        if (m_cachedBlock->address() <= address &&
+            m_cachedBlock->address() + m_cachedBlock->length() > address) {
+            return m_cachedBlock->data()[address - m_cachedBlock->address()];
         }
     }
 
     for (auto block : m_blocks) {
         if (block->address() <= address && block->address() + block->length() > address) {
-            cached = block;
+            m_cachedBlock = block;
             return block->data()[address - block->address()];
         }
     }
@@ -470,25 +481,25 @@ uint8_t IntelHex::get(uint32_t address) const
 uint8_t &IntelHex::operator[](uint32_t address)
 {
     // caching last accessed block as it is most likely will be used again
-    static Block *cached = nullptr;
 
-    if (cached) {
-        if (cached->address() <= address && cached->address() + cached->length() > address) {
-            return cached->data()[address - cached->address()];
+    if (m_cachedBlock) {
+        if (m_cachedBlock->address() <= address &&
+            m_cachedBlock->address() + m_cachedBlock->length() > address) {
+            return m_cachedBlock->data()[address - m_cachedBlock->address()];
         }
-        else if (cached->address() + cached->length() == address) {
-            cached->add_bytes(&m_fillChar, 1);
-            return cached->data()[address - cached->address()];
+        else if (m_cachedBlock->address() + m_cachedBlock->length() == address) {
+            m_cachedBlock->add_bytes(&m_fillChar, 1);
+            return m_cachedBlock->data()[address - m_cachedBlock->address()];
         }
     }
 
     for (auto block : m_blocks) {
         if (block->address() <= address && block->address() + block->length() > address) {
-            cached = block;
+            m_cachedBlock = block;
             return block->data()[address - block->address()];
         }
         else if (block->address() + block->length() == address) {
-            cached = block;
+            m_cachedBlock = block;
             block->add_bytes(&m_fillChar, 1);
             return block->data()[address - block->address()];
         }
@@ -499,7 +510,7 @@ uint8_t &IntelHex::operator[](uint32_t address)
     newBlock->set_base_address(address & 0xFFFF);
     m_blocks.push_back(newBlock);
     newBlock->add_bytes(&m_fillChar, 1);
-    cached = newBlock;
+    m_cachedBlock = newBlock;
     return newBlock->data()[address - newBlock->address()];
 }
 
@@ -551,7 +562,7 @@ void IntelHex::erase(uint32_t address, uint32_t length)
             m_blocks.insert(position, newBlock);
         }
     }
-    // clean up blocks market for deletion
+    // clean up blocks marked for deletion
     // TODO: re-write this part
     m_blocks.erase(std::remove_if(m_blocks.begin(),
                                   m_blocks.end(),
@@ -607,9 +618,19 @@ void IntelHex::fill(uint8_t fillChar)
 bool IntelHex::isSet(uint32_t address, uint8_t &val) const
 {
     val = m_fillChar;
+
+    if (m_cachedBlock) {
+        if (m_cachedBlock->address() <= address &&
+            m_cachedBlock->address() + m_cachedBlock->length() > address) {
+            val = m_cachedBlock->data()[address - m_cachedBlock->address()];
+            return true;
+        }
+    }
+
     for (auto block : m_blocks) {
         if (block->address() <= address && block->address() + block->length() > address) {
-            val = block->data()[address - block->address()];
+            m_cachedBlock = block;
+            val         = block->data()[address - block->address()];
             return true;
         }
     }
